@@ -36,6 +36,7 @@
 34. Crea una aserción explícita de refresh para cubrir FR-005 en cypress/integration/candidate-phase-drag.spec.js y registra el prompt.
 35. Ajusta la spec asociada para que tenga contexto en el futuro de esta modificación.
 36. Ejecuta nuevamente la prueba asociada y guarda los resultados en el fichero de prompts.
+37. Perfecto, ahora haz un merge contra la rama e2e-PJM, haz commit y push.
 
 ### Informe Clarify - Spec E2E Position
 
