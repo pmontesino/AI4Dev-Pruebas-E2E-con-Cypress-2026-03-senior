@@ -1,9 +1,12 @@
 import { Candidate } from '../../domain/models/Candidate';
+import { PrismaClient } from '@prisma/client';
 import { validateCandidateData } from '../validator';
 import { Education } from '../../domain/models/Education';
 import { WorkExperience } from '../../domain/models/WorkExperience';
 import { Resume } from '../../domain/models/Resume';
 import { Application } from '../../domain/models/Application';
+
+const prisma = new PrismaClient();
 
 export const addCandidate = async (candidateData: any) => {
     try {
@@ -72,6 +75,23 @@ export const updateCandidateStage = async (id: number, applicationIdNumber: numb
             throw new Error('Application not found');
         }
 
+        const validStepForPosition = await prisma.interviewStep.findFirst({
+            where: {
+                id: currentInterviewStep,
+                interviewFlow: {
+                    positions: {
+                        some: {
+                            id: application.positionId,
+                        },
+                    },
+                },
+            },
+        });
+
+        if (!validStepForPosition) {
+            throw new Error('Invalid interview step for this position');
+        }
+
         // Actualizar solo la etapa de la entrevista actual de la aplicación específica
         application.currentInterviewStep = currentInterviewStep;
 
@@ -79,7 +99,10 @@ export const updateCandidateStage = async (id: number, applicationIdNumber: numb
         await application.save();
 
         return application;
-    } catch (error: any) {
-        throw new Error(error);
+    } catch (error: unknown) {
+        if (error instanceof Error) {
+            throw error;
+        }
+        throw new Error('Unexpected error updating candidate stage');
     }
 };

@@ -1,0 +1,74 @@
+name: E2E Position Page
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - e2e-PJM
+      - main
+
+jobs:
+  e2e-position-page:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: LTIdb
+          POSTGRES_USER: LTIdbUser
+          POSTGRES_PASSWORD: D1ymf8wyQEGthFR1E9xhCq
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U LTIdbUser -d LTIdb"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Prepare backend Prisma
+        working-directory: backend
+        run: |
+          npx prisma generate
+          npx prisma migrate deploy || npx prisma db push
+
+      - name: Seed E2E data
+        working-directory: backend
+        run: npm run seed:e2e:position
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Start backend
+        working-directory: backend
+        run: npm run dev &
+
+      - name: Start frontend
+        working-directory: frontend
+        run: npm start &
+
+      - name: Wait for apps
+        run: npx wait-on http://localhost:3000 http://localhost:3010
+
+      - name: Run Cypress position spec
+        run: npm run e2e:run:position
+
+      - name: Run Cypress candidate phase drag spec
+        run: npm run e2e:run:candidate-phase-drag

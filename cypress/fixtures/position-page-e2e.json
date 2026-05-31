@@ -1,0 +1,26 @@
+{
+  "recruiter": {
+    "email": "recruiter.e2e@lti.com",
+    "password": "not-required-ui-flow"
+  },
+  "positionTitle": "E2E Position - Position Page Load",
+  "phases": [
+    "Initial Screening",
+    "Technical Interview",
+    "Manager Interview",
+    "Final Decision"
+  ],
+  "candidatesByPhase": {
+    "Initial Screening": [
+      "Ana Gomez"
+    ],
+    "Technical Interview": [
+      "Bruno Diaz",
+      "Diego Mora"
+    ],
+    "Manager Interview": [
+      "Carla Ruiz"
+    ],
+    "Final Decision": []
+  }
+}

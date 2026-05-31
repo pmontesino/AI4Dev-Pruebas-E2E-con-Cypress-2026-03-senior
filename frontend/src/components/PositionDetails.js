@@ -1,100 +1,110 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { Container, Row, Offcanvas, Button } from 'react-bootstrap';
+import { Container, Row, Button } from 'react-bootstrap';
 import { DragDropContext } from 'react-beautiful-dnd';
 import StageColumn from './StageColumn';
 import CandidateDetails from './CandidateDetails';
 import { useNavigate } from 'react-router-dom';
+import { getPositionInterviewFlow, getPositionCandidates, updateCandidateStage } from '../services/candidateService';
 
 const PositionsDetails = () => {
     const { id } = useParams();
     const [stages, setStages] = useState([]);
     const [positionName, setPositionName] = useState('');
     const [selectedCandidate, setSelectedCandidate] = useState(null);
+    const [dragUpdateError, setDragUpdateError] = useState('');
     const navigate = useNavigate();
 
     useEffect(() => {
-        const fetchInterviewFlow = async () => {
+        const loadPositionPipeline = async () => {
             try {
-                const response = await fetch(`http://localhost:3010/positions/${id}/interviewFlow`);
-                const data = await response.json();
-                const interviewSteps = data.interviewFlow.interviewFlow.interviewSteps.map(step => ({
-                    title: step.name,
-                    id: step.id,
-                    candidates: []
+                const [flowData, candidates] = await Promise.all([
+                    getPositionInterviewFlow(id),
+                    getPositionCandidates(id),
+                ]);
+
+                const stagesWithCandidates = flowData.stages.map((stage) => ({
+                    ...stage,
+                    candidates: candidates.filter((candidate) => candidate.currentInterviewStepId === stage.id),
                 }));
-                setStages(interviewSteps);
-                setPositionName(data.interviewFlow.positionName);
+
+                setStages(stagesWithCandidates);
+                setPositionName(flowData.positionName);
             } catch (error) {
-                console.error('Error fetching interview flow:', error);
+                console.error('Error loading position details:', error);
             }
         };
 
-        const fetchCandidates = async () => {
-            try {
-                const response = await fetch(`http://localhost:3010/positions/${id}/candidates`);
-                const candidates = await response.json();
-                setStages(prevStages =>
-                    prevStages.map(stage => ({
-                        ...stage,
-                        candidates: candidates
-                            .filter(candidate => candidate.currentInterviewStep === stage.title)
-                            .map(candidate => ({
-                                id: candidate.candidateId.toString(),
-                                name: candidate.fullName,
-                                rating: candidate.averageScore,
-                                applicationId: candidate.applicationId
-                            }))
-                    }))
-                );
-            } catch (error) {
-                console.error('Error fetching candidates:', error);
-            }
-        };
-
-        fetchInterviewFlow();
-        fetchCandidates();
+        loadPositionPipeline();
     }, [id]);
 
-    const updateCandidateStep = async (candidateId, applicationId, newStep) => {
-        try {
-            const response = await fetch(`http://localhost:3010/candidates/${candidateId}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    applicationId: Number(applicationId),
-                    currentInterviewStep: Number(newStep)
-                })
-            });
+    const cloneStages = (stagesToClone) =>
+        stagesToClone.map((stage) => ({
+            ...stage,
+            candidates: [...stage.candidates],
+        }));
 
-            if (!response.ok) {
-                throw new Error('Error updating candidate step');
-            }
-        } catch (error) {
-            console.error('Error updating candidate step:', error);
+    const moveCandidateBetweenStages = (currentStages, source, destination) => {
+        const nextStages = cloneStages(currentStages);
+        const sourceStageIndex = nextStages.findIndex((stage) => String(stage.id) === source.droppableId);
+        const destinationStageIndex = nextStages.findIndex((stage) => String(stage.id) === destination.droppableId);
+
+        if (sourceStageIndex < 0 || destinationStageIndex < 0) {
+            return null;
         }
+
+        const sourceStage = nextStages[sourceStageIndex];
+        const destinationStage = nextStages[destinationStageIndex];
+        const [movedCandidate] = sourceStage.candidates.splice(source.index, 1);
+
+        if (!movedCandidate) {
+            return null;
+        }
+
+        destinationStage.candidates.splice(destination.index, 0, movedCandidate);
+
+        return {
+            nextStages,
+            movedCandidate,
+            destinationStageId: destinationStage.id,
+        };
     };
 
-    const onDragEnd = (result) => {
+    const onDragEnd = async (result) => {
         const { source, destination } = result;
 
         if (!destination) {
             return;
         }
 
-        const sourceStage = stages[source.droppableId];
-        const destStage = stages[destination.droppableId];
+        if (
+            source.droppableId === destination.droppableId
+            && source.index === destination.index
+        ) {
+            return;
+        }
 
-        const [movedCandidate] = sourceStage.candidates.splice(source.index, 1);
-        destStage.candidates.splice(destination.index, 0, movedCandidate);
+        const previousStages = cloneStages(stages);
+        const movementResult = moveCandidateBetweenStages(stages, source, destination);
 
-        setStages([...stages]);
+        if (!movementResult) {
+            return;
+        }
 
-        const destStageId = stages[destination.droppableId].id;
+        setDragUpdateError('');
+        setStages(movementResult.nextStages);
 
-        updateCandidateStep(movedCandidate.id, movedCandidate.applicationId, destStageId);
+        try {
+            await updateCandidateStage({
+                candidateId: movementResult.movedCandidate.id,
+                applicationId: movementResult.movedCandidate.applicationId,
+                currentInterviewStep: movementResult.destinationStageId,
+            });
+        } catch (error) {
+            setStages(previousStages);
+            setDragUpdateError('No se pudo actualizar la fase del candidato.');
+            console.error('Error updating candidate step:', error);
+        }
     };
 
     const handleCardClick = (candidate) => {
@@ -110,11 +120,16 @@ const PositionsDetails = () => {
             <Button variant="link" onClick={() => navigate('/positions')} className="mb-3">
                 Volver a Posiciones
             </Button>
-            <h2 className="text-center mb-4">{positionName}</h2>
+            <h2 className="text-center mb-4" data-testid="position-title">{positionName}</h2>
+            {dragUpdateError && (
+                <div className="alert alert-danger" data-testid="drag-update-error">
+                    {dragUpdateError}
+                </div>
+            )}
             <DragDropContext onDragEnd={onDragEnd}>
                 <Row>
-                    {stages.map((stage, index) => (
-                        <StageColumn key={index} stage={stage} index={index} onCardClick={handleCardClick} />
+                    {stages.map((stage) => (
+                        <StageColumn key={stage.id} stage={stage} onCardClick={handleCardClick} />
                     ))}
                 </Row>
             </DragDropContext>
