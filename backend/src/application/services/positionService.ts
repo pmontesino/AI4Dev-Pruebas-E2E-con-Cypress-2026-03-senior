@@ -3,6 +3,28 @@ import { Position } from '../../domain/models/Position';
 
 const prisma = new PrismaClient();
 
+type ApplicationWithRelations = {
+    id: number;
+    candidateId: number;
+    currentInterviewStep: number;
+    candidate: {
+        firstName: string;
+        lastName: string;
+    };
+    interviews: Array<{ score: number | null }>;
+    interviewStep: {
+        name: string;
+    };
+};
+
+type InterviewStepShape = {
+    id: number;
+    interviewFlowId: number;
+    interviewTypeId: number;
+    name: string;
+    orderIndex: number;
+};
+
 const calculateAverageScore = (interviews: any[]) => {
     if (interviews.length === 0) return 0;
     const totalScore = interviews.reduce((acc, interview) => acc + (interview.score || 0), 0);
@@ -20,9 +42,10 @@ export const getCandidatesByPositionService = async (positionId: number) => {
             }
         });
 
-        return applications.map(app => ({
+        return (applications as ApplicationWithRelations[]).map(app => ({
             fullName: `${app.candidate.firstName} ${app.candidate.lastName}`,
             currentInterviewStep: app.interviewStep.name,
+            currentInterviewStepId: app.currentInterviewStep,
             candidateId: app.candidateId,
             applicationId: app.id,
             averageScore: calculateAverageScore(app.interviews)
@@ -55,7 +78,9 @@ export const getInterviewFlowByPositionService = async (positionId: number) => {
         interviewFlow: {
             id: positionWithInterviewFlow.interviewFlow.id,
             description: positionWithInterviewFlow.interviewFlow.description,
-            interviewSteps: positionWithInterviewFlow.interviewFlow.interviewSteps.map(step => ({
+            interviewSteps: positionWithInterviewFlow.interviewFlow.interviewSteps
+            .sort((a: InterviewStepShape, b: InterviewStepShape) => a.orderIndex - b.orderIndex)
+            .map((step: InterviewStepShape) => ({
                 id: step.id,
                 interviewFlowId: step.interviewFlowId,
                 interviewTypeId: step.interviewTypeId,

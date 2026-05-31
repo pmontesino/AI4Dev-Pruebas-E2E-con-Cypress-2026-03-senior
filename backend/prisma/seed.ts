@@ -1,8 +1,14 @@
 import { PrismaClient } from '@prisma/client';
+import { runE2EPositionSeed } from './seed.e2e.position';
 
 const prisma = new PrismaClient();
 
 async function main() {
+  if (process.env.SEED_PROFILE === 'e2e-position') {
+    await runE2EPositionSeed(prisma);
+    return;
+  }
+
   // Create Companies
   const company1 = await prisma.company.create({
     data: {
